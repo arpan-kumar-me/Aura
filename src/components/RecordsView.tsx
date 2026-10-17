@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export const RecordsView: React.FC = () => {
-  const { records, setSelectedRecord, setIsAddRecordModalOpen } = useHealth();
+  const { records, setSelectedRecord, setIsAddRecordModalOpen, openAddRecordModal } = useHealth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<RecordType | 'all'>('all');
   const [selectedSource, setSelectedSource] = useState<string>('all');
@@ -138,9 +138,16 @@ export const RecordsView: React.FC = () => {
 
       {/* Chronological Record List */}
       <div className="space-y-3">
-        {filteredRecords.length === 0 ? (
+        {records.length === 0 ? (
           <EmptyState
-            title="No records found"
+            title="No medical records recorded yet"
+            description="Prescriptions, laboratory reports, and clinical encounter notes will appear here once uploaded or connected."
+            actionLabel="Add your first medical record"
+            onAction={() => openAddRecordModal('prescription')}
+          />
+        ) : filteredRecords.length === 0 ? (
+          <EmptyState
+            title="No records match your filters"
             description="No medical records or prescriptions match your current filter selections. Try clearing your search query or filters."
             actionLabel="Clear filters"
             onAction={() => {

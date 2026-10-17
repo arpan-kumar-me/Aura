@@ -113,14 +113,20 @@ const RECORD_TYPE_CONFIG: {
 ];
 
 export const AddRecordModal: React.FC = () => {
-  const { isAddRecordModalOpen, setIsAddRecordModalOpen, addRecord } = useHealth();
+  const { isAddRecordModalOpen, setIsAddRecordModalOpen, addRecord, initialRecordType } = useHealth();
 
   const [step, setStep] = useState<'input' | 'review'>('input');
-  const [docType, setDocType] = useState<RecordType>('prescription');
+  const [docType, setDocType] = useState<RecordType>(initialRecordType || 'prescription');
   const [docTitle, setDocTitle] = useState('');
   const [docSource, setDocSource] = useState('Mount Sinai Clinic');
   const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
   const [docText, setDocText] = useState('');
+
+  React.useEffect(() => {
+    if (isAddRecordModalOpen && initialRecordType) {
+      setDocType(initialRecordType);
+    }
+  }, [isAddRecordModalOpen, initialRecordType]);
 
   // File Upload State
   const [selectedFile, setSelectedFile] = useState<AttachedFile | null>(null);
