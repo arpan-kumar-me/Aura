@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation helpers
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.role in ['patient', 'clinician', 'admin'];
+    }
+
+    function isValidHealthRecord(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'recordType', 'date', 'status']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 300 &&
+             data.recordType in ['prescription', 'lab_report', 'clinical_note', 'medication', 'symptom', 'wearable_summary', 'other_document'] &&
+             data.date is string && data.date.size() <= 32 &&
+             data.status in ['confirmed', 'pending_review', 'rejected'];
+    }
+
+    function isValidObservation(data) {
+      return data.keys().hasAll(['id', 'userId', 'metric', 'value', 'unit', 'timestamp']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.metric is string && data.metric.size() <= 100 &&
+             data.value is number &&
+             data.unit is string && data.unit.size() <= 50 &&
+             data.timestamp is string && data.timestamp.size() <= 64;
+    }
+
+    function isValidPatternCandidate(data) {
+      return data.keys().hasAll(['id', 'userId', 'patternType', 'title', 'observation', 'evidenceStrength']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.patternType in ['personal_baseline_deviation', 'temporal_association', 'recurrent_sequence', 'medication_timing', 'clinical_trend', 'cross_source'] &&
+             data.title is string && data.title.size() <= 300 &&
+             data.observation is string && data.observation.size() <= 2000 &&
+             data.evidenceStrength in ['high', 'moderate', 'exploratory'];
+    }
+
+    function isValidClinicianReview(data) {
+      return data.keys().hasAll(['id', 'patternId', 'patientId', 'clinicianUid', 'status', 'reviewedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.patternId is string && data.patternId.size() <= 128 &&
+             data.patientId is string && data.patientId.size() <= 128 &&
+             data.clinicianUid is string && data.clinicianUid.size() <= 128 &&
+             data.status in ['reviewed', 'not_relevant', 'requires_followup'] &&
+             data.reviewedAt is string && data.reviewedAt.size() <= 64;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      // Health Records Subcollection
+      match /records/{recordId} {
+        allow get, list: if isSignedIn();
+        allow create: if isOwner(userId) && isValidHealthRecord(request.resource.data);
+        allow update: if isOwner(userId) && isValidHealthRecord(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      // Observations Subcollection
+      match /observations/{observationId} {
+        allow get, list: if isSignedIn();
+        allow create: if isOwner(userId) && isValidObservation(request.resource.data);
+        allow update: if isOwner(userId) && isValidObservation(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      // Pattern Candidates Subcollection
+      match /patterns/{patternId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() && isValidPatternCandidate(request.resource.data);
+        allow update: if isSignedIn() && isValidPatternCandidate(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      // Clinician Reviews Subcollection
+      match /reviews/{reviewId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() && isValidClinicianReview(request.resource.data) && request.resource.data.clinicianUid == request.auth.uid;
+        allow update: if isSignedIn() && isValidClinicianReview(request.resource.data) && (resource.data.clinicianUid == request.auth.uid);
+        allow delete: if isSignedIn() && resource.data.clinicianUid == request.auth.uid;
+      }
+    }
+  }
+}

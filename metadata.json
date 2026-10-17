@@ -1,0 +1,6 @@
+{
+  "name": "AURA — Longitudinal Health Intelligence",
+  "description": "Evidence-backed longitudinal health intelligence platform connecting medical history, symptoms, medications, lab tests, and wearable metrics over time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

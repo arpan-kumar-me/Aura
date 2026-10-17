@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and medical record preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth user id" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "Full name or alias" },
+        "role": { "type": "string", "enum": ["patient", "clinician", "admin"], "description": "Primary role of the user" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of account creation" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "HealthRecord": {
+      "title": "HealthRecord",
+      "description": "Longitudinal medical document, prescription, or encounter entry with provenance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique record identifier" },
+        "userId": { "type": "string", "description": "Patient user ID" },
+        "title": { "type": "string", "description": "Title or descriptive label of the record" },
+        "recordType": { "type": "string", "enum": ["prescription", "lab_report", "clinical_note", "medication", "symptom", "wearable_summary", "other_document"], "description": "Category of medical record" },
+        "source": { "type": "string", "description": "Clinical or device source e.g. Quest, Epic, Pharmacy, Dr. Lin" },
+        "date": { "type": "string", "description": "Date of encounter or observation (YYYY-MM-DD)" },
+        "status": { "type": "string", "enum": ["confirmed", "pending_review", "rejected"], "description": "Human validation status" },
+        "summary": { "type": "string", "description": "Concise summary of findings" },
+        "rawContent": { "type": "string", "description": "Original text excerpt or lab values" },
+        "attachedFile": {
+          "type": "object",
+          "description": "Original uploaded prescription or document metadata and payload"
+        },
+        "prescriptionDetails": {
+          "type": "object",
+          "description": "Structured prescription fields including medication, strength, dosage, route, and prescriber"
+        },
+        "createdAt": { "type": "string", "description": "System creation timestamp" }
+      },
+      "required": ["id", "userId", "title", "recordType", "date", "status"]
+    },
+    "Observation": {
+      "title": "Observation",
+      "description": "Discrete quantitative or qualitative biomarker measurement",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Observation identifier" },
+        "userId": { "type": "string", "description": "Patient user ID" },
+        "recordId": { "type": "string", "description": "Linked HealthRecord ID" },
+        "metric": { "type": "string", "description": "Biomarker or metric key e.g. hba1c, rhr, ferritin" },
+        "value": { "type": "number", "description": "Numeric measurement value" },
+        "unit": { "type": "string", "description": "Unit of measurement e.g. mg/dL, bpm, ms" },
+        "referenceLow": { "type": "number", "description": "Lower bound of standard laboratory reference interval" },
+        "referenceHigh": { "type": "number", "description": "Upper bound of standard laboratory reference interval" },
+        "timestamp": { "type": "string", "description": "Exact observation timestamp" },
+        "source": { "type": "string", "description": "Data provider or instrument" }
+      },
+      "required": ["id", "userId", "metric", "value", "unit", "timestamp"]
+    },
+    "PatternCandidate": {
+      "title": "PatternCandidate",
+      "description": "Deterministic or evaluated longitudinal pattern candidate with evidence links",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique pattern candidate ID" },
+        "userId": { "type": "string", "description": "Patient user ID" },
+        "patternType": { "type": "string", "enum": ["personal_baseline_deviation", "temporal_association", "recurrent_sequence", "medication_timing", "clinical_trend", "cross_source"], "description": "Methodological pattern category" },
+        "title": { "type": "string", "description": "Concise descriptive title of the pattern" },
+        "observation": { "type": "string", "description": "Plain language description of what was observed" },
+        "windowStart": { "type": "string", "description": "Start date of analyzed window" },
+        "windowEnd": { "type": "string", "description": "End date of analyzed window" },
+        "evidenceStrength": { "type": "string", "enum": ["high", "moderate", "exploratory"], "description": "Evidence support tier" },
+        "potentialRelevance": { "type": "string", "enum": ["high", "moderate", "low"], "description": "Curated clinical relevance rating" },
+        "recurrence": { "type": "number", "description": "Number of times sequence or deviation reoccurred" },
+        "dataQuality": { "type": "string", "enum": ["complete", "adequate", "sparse"], "description": "Completeness of source records in window" },
+        "limitations": { "type": "string", "description": "Documented confounding factors and limitations" },
+        "createdAt": { "type": "string", "description": "Detection timestamp" }
+      },
+      "required": ["id", "userId", "patternType", "title", "observation", "evidenceStrength"]
+    },
+    "ClinicianReview": {
+      "title": "ClinicianReview",
+      "description": "Professional clinician review and disposition on a pattern candidate",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Review record ID" },
+        "patternId": { "type": "string", "description": "Associated PatternCandidate ID" },
+        "patientId": { "type": "string", "description": "Patient user ID" },
+        "clinicianUid": { "type": "string", "description": "Clinician user UID" },
+        "clinicianName": { "type": "string", "description": "Clinician name and credential" },
+        "status": { "type": "string", "enum": ["reviewed", "not_relevant", "requires_followup"], "description": "Clinician determination" },
+        "notes": { "type": "string", "description": "Clinical commentary and reasoning" },
+        "reviewedAt": { "type": "string", "description": "Timestamp of review" }
+      },
+      "required": ["id", "patternId", "patientId", "clinicianUid", "status", "reviewedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Patient and clinician profile records"
+    },
+    "/users/{userId}/records/{recordId}": {
+      "schema": { "$ref": "#/entities/HealthRecord" },
+      "description": "Patient longitudinal documents, prescriptions, lab reports, and encounter entries"
+    },
+    "/users/{userId}/observations/{observationId}": {
+      "schema": { "$ref": "#/entities/Observation" },
+      "description": "Normalized biomarker measurements and wearable time-series metrics"
+    },
+    "/users/{userId}/patterns/{patternId}": {
+      "schema": { "$ref": "#/entities/PatternCandidate" },
+      "description": "Detected longitudinal pattern candidates with evidence linkages"
+    },
+    "/users/{userId}/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/ClinicianReview" },
+      "description": "Clinician review notes and clinical evaluations"
+    }
+  }
+}
