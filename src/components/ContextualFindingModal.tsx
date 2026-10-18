@@ -50,13 +50,19 @@ export const ContextualFindingModal: React.FC = () => {
         },
       }),
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('application/json')) {
+          throw new Error(`Explanation server returned ${res.status} (${contentType})`);
+        }
+        return res.json();
+      })
       .then((data) => {
         if (data.explanation) {
           setAiExplanation(data.explanation);
         }
       })
-      .catch((err) => console.error('Gemini explanation error:', err))
+      .catch((err) => console.warn('Gemini explanation fallback active:', err))
       .finally(() => setAiLoading(false));
 
     // Load Bioscience data

@@ -5,9 +5,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const apiRouter = express.Router();
-// Support up to 15MB payloads for uploaded PDF and medical document image base64 strings
-apiRouter.use(express.json({ limit: '15mb' }));
-apiRouter.use(express.urlencoded({ limit: '15mb', extended: true }));
+// Support up to 50MB payloads for uploaded PDF and medical document image base64 strings
+apiRouter.use(express.json({ limit: '50mb' }));
+apiRouter.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Initialize server-side Gemini client with telemetry header
 const geminiApiKey = process.env.GEMINI_API_KEY;
@@ -177,10 +177,10 @@ apiRouter.post('/extract', async (req: Request, res: Response) => {
         });
       }
 
-      // Check max size (approx 12MB base64)
-      if (fileData.length > 15 * 1024 * 1024) {
+      // Check max size (approx 45MB base64)
+      if (fileData.length > 50 * 1024 * 1024) {
         return res.status(400).json({
-          error: 'File size exceeds maximum limit of 10MB. Please select a smaller file.',
+          error: 'File size exceeds maximum limit of 30MB. Please select a smaller file.',
         });
       }
     }
@@ -191,7 +191,7 @@ apiRouter.post('/extract', async (req: Request, res: Response) => {
       // Build multimodal contents
       const parts: any[] = [];
 
-      // Add attached file if present
+      // Add attached file if present (PDF, JPG, JPEG, PNG)
       if (fileData && fileType) {
         const base64Data = fileData.includes(';base64,') ? fileData.split(';base64,')[1] : fileData;
         parts.push({
@@ -233,7 +233,7 @@ For lab reports or clinical notes, also extract numerical observations (CPK, AST
       try {
         const response = await aiClient.models.generateContent({
           model: 'gemini-3.8-flash',
-          contents: parts.length === 1 ? parts[0].text : { parts },
+          contents: { parts },
           config: {
             responseMimeType: 'application/json',
             responseSchema: {
@@ -265,7 +265,6 @@ For lab reports or clinical notes, also extract numerical observations (CPK, AST
                     refills: { type: Type.STRING },
                     instructions: { type: Type.STRING },
                   },
-                  required: ["medicationName"],
                 },
                 extractedObservations: {
                   type: Type.ARRAY,
@@ -293,37 +292,100 @@ For lab reports or clinical notes, also extract numerical observations (CPK, AST
         });
 
         const extractedJson = JSON.parse(response.text || '{}');
-        return res.json({ success: true, data: extractedJson });
+        return res.json({
+          success: true,
+          extractionSource: 'gemini_multimodal',
+          isAiExtracted: true,
+          data: extractedJson,
+        });
       } catch (geminiError) {
-        console.warn('[AURA Gemini API] Model inference deferred or quota unavailable. Engaging deterministic clinical parser:', geminiError);
+        console.warn('[AURA Gemini API] Model inference deferred or quota unavailable. Engaging honest clinical fallback:', geminiError);
       }
     }
 
-    // High fidelity deterministic extraction fallback when API key is unconfigured or quota unavailable
-    const contentToParse = documentText || `${documentTitle || ''} ${fileName || ''}`;
-    const parsedRx = parsePrescriptionText(contentToParse, documentTitle, dateHint);
+    // Honest, transparent fallback handling when Gemini is unconfigured or unavailable
+    const hasMeaningfulText = Boolean(documentText && documentText.trim().length > 5);
 
+    if (hasMeaningfulText) {
+      const parsedRx = parsePrescriptionText(documentText, documentTitle, dateHint);
+      const observations: any[] = [];
+
+      // Extract CPK if present
+      const cpkMatch = documentText.match(/(?:creatine kinase|cpk)[^\d]*(\d+(?:\.\d+)?)\s*(u\/l)?/i);
+      if (cpkMatch) {
+        observations.push({
+          metricKey: 'cpk',
+          metricLabel: 'Creatine Kinase (CPK)',
+          numericValue: parseFloat(cpkMatch[1]),
+          unit: cpkMatch[2] || 'U/L',
+          referenceLow: 30,
+          referenceHigh: 145,
+          status: parseFloat(cpkMatch[1]) > 145 ? 'elevated' : 'normal',
+          confidence: 0.85,
+          requiresConfirmation: true,
+          sourceSnippet: cpkMatch[0],
+        });
+      }
+
+      // Extract AST if present
+      const astMatch = documentText.match(/(?:ast|sgot)[^\d]*(\d+(?:\.\d+)?)\s*(u\/l)?/i);
+      if (astMatch) {
+        observations.push({
+          metricKey: 'ast',
+          metricLabel: 'AST (SGOT)',
+          numericValue: parseFloat(astMatch[1]),
+          unit: astMatch[2] || 'U/L',
+          referenceLow: 10,
+          referenceHigh: 35,
+          status: parseFloat(astMatch[1]) > 35 ? 'elevated' : 'normal',
+          confidence: 0.85,
+          requiresConfirmation: true,
+          sourceSnippet: astMatch[0],
+        });
+      }
+
+      return res.json({
+        success: true,
+        extractionSource: 'deterministic_text_parser',
+        isAiExtracted: false,
+        notice: 'Extracted from document text using pattern matching. Please review and verify all fields below.',
+        data: {
+          documentType: effectiveType,
+          encounterDate: parsedRx.prescriptionDate || dateHint || new Date().toISOString().split('T')[0],
+          summary: effectiveType === 'prescription' && parsedRx.medicationName
+            ? `Prescription for ${parsedRx.medicationName}${parsedRx.strength ? ` ${parsedRx.strength}` : ''}${parsedRx.prescribingClinician ? ` from ${parsedRx.prescribingClinician}` : ''}.`
+            : `Extracted clinical entry from ${documentTitle || fileName || 'document text'}.`,
+          prescriptionDetails: effectiveType === 'prescription' ? parsedRx : undefined,
+          extractedObservations: observations,
+        },
+      });
+    }
+
+    // Binary file uploaded (PDF, JPG, PNG) with no text provided and AI vision unavailable:
+    // Honest manual entry fallback — preserves the attached file without returning fake data!
     return res.json({
       success: true,
+      extractionSource: 'manual_entry_required',
+      isAiExtracted: false,
+      notice: 'AI vision extraction is currently unavailable. Your document is securely attached. Please enter the details manually below to complete the record.',
       data: {
-        documentType: effectiveType === 'prescription' ? 'prescription' : 'clinical_note',
-        encounterDate: parsedRx.prescriptionDate || dateHint || new Date().toISOString().split('T')[0],
-        summary: effectiveType === 'prescription'
-          ? `Prescription for ${parsedRx.medicationName}${parsedRx.strength ? ` ${parsedRx.strength}` : ''}${parsedRx.prescribingClinician ? ` authorized by ${parsedRx.prescribingClinician}` : ''}.`
-          : `Extracted clinical entry from ${documentTitle || fileName || 'document'}.`,
-        prescriptionDetails: effectiveType === 'prescription' ? parsedRx : undefined,
-        extractedObservations: [
-          {
-            metricKey: parsedRx.medicationName.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'prescription_event',
-            metricLabel: parsedRx.medicationName || 'Prescription',
-            numericValue: parsedRx.strength ? parseFloat(parsedRx.strength) || null : null,
-            unit: parsedRx.strength ? parsedRx.strength.replace(/[0-9\.\s]/g, '') : '',
-            status: 'recorded',
-            confidence: 0.94,
-            requiresConfirmation: false,
-            sourceSnippet: parsedRx.instructions || `${parsedRx.medicationName} ${parsedRx.strength || ''}`,
-          },
-        ],
+        documentType: effectiveType,
+        encounterDate: dateHint || new Date().toISOString().split('T')[0],
+        summary: `Attached file: ${fileName || documentTitle || 'Medical Document'}. Details entered manually.`,
+        prescriptionDetails: effectiveType === 'prescription' ? {
+          medicationName: (documentTitle || fileName || '').replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim(),
+          strength: '',
+          dosage: '',
+          frequency: '',
+          route: 'Oral',
+          duration: '',
+          prescribingClinician: '',
+          prescriptionDate: dateHint || new Date().toISOString().split('T')[0],
+          refills: '',
+          instructions: '',
+          isTakenConfirmed: false,
+        } : undefined,
+        extractedObservations: [],
       },
     });
   } catch (error: any) {

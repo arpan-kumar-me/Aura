@@ -41,7 +41,10 @@ export interface PubChemCompound {
 export async function fetchPubMedLiterature(term: string): Promise<PubMedArticle[]> {
   try {
     const res = await fetch(`/api/science/literature?term=${encodeURIComponent(term)}`);
-    if (!res.ok) throw new Error(`PubMed API returned status ${res.status}`);
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok || !contentType.includes('application/json')) {
+      throw new Error(`PubMed API returned invalid response (${res.status}, ${contentType})`);
+    }
     const data = await res.json();
     return data.articles || [];
   } catch (err) {
@@ -73,7 +76,10 @@ export async function fetchPubMedLiterature(term: string): Promise<PubMedArticle
 export async function fetchFdaAdverseEvents(drug: string): Promise<FdaDrugProfile> {
   try {
     const res = await fetch(`/api/science/fda?drug=${encodeURIComponent(drug)}`);
-    if (!res.ok) throw new Error(`FDA API returned status ${res.status}`);
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok || !contentType.includes('application/json')) {
+      throw new Error(`FDA API returned invalid response (${res.status}, ${contentType})`);
+    }
     return await res.json();
   } catch (err) {
     console.warn('Using local FDA fallback:', err);
@@ -99,7 +105,10 @@ export async function fetchFdaAdverseEvents(drug: string): Promise<FdaDrugProfil
 export async function fetchPubChemCompound(compound: string): Promise<PubChemCompound> {
   try {
     const res = await fetch(`/api/science/pubchem?compound=${encodeURIComponent(compound)}`);
-    if (!res.ok) throw new Error(`PubChem API returned status ${res.status}`);
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok || !contentType.includes('application/json')) {
+      throw new Error(`PubChem API returned invalid response (${res.status}, ${contentType})`);
+    }
     return await res.json();
   } catch (err) {
     console.warn('Using local PubChem fallback:', err);

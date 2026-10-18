@@ -1,23 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig, Plugin } from 'vite';
-import { apiRouter } from './server/api.ts';
-
-function apiMiddlewarePlugin(): Plugin {
-  return {
-    name: 'aura-api-middleware',
-    configureServer(server) {
-      server.middlewares.use('/api', (req, res, next) => {
-        (apiRouter as any)(req, res, next);
-      });
-    },
-  };
-}
+import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), apiMiddlewarePlugin()],
+    plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

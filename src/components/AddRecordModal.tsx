@@ -139,6 +139,8 @@ export const AddRecordModal: React.FC = () => {
   // Extracted fields for human review (FR-02)
   const [extractedSummary, setExtractedSummary] = useState('');
   const [extractedFacts, setExtractedFacts] = useState<ExtractedFact[]>([]);
+  const [extractionSource, setExtractionSource] = useState<string>('gemini_multimodal');
+  const [extractionNotice, setExtractionNotice] = useState<string | null>(null);
   const [prescriptionFields, setPrescriptionFields] = useState<PrescriptionDetails>({
     medicationName: '',
     strength: '',
@@ -253,6 +255,18 @@ export const AddRecordModal: React.FC = () => {
       clearInterval(progressTimer);
       setUploadProgress(100);
 
+      // Verify response content-type before parsing to avoid Unexpected token '<' errors
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const textPreview = await res.text().catch(() => '');
+        if (textPreview.includes('<!doctype') || textPreview.includes('<html')) {
+          throw new Error(
+            'The extraction server returned an HTML document instead of JSON. The backend server is restarting or initializing. You can continue with manual entry.'
+          );
+        }
+        throw new Error(`Unexpected server response format (${contentType || 'non-JSON'}). Expected JSON.`);
+      }
+
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error || `Server returned error (${res.status})`);
@@ -260,6 +274,8 @@ export const AddRecordModal: React.FC = () => {
 
       const json = await res.json();
       if (json.data) {
+        setExtractionSource(json.extractionSource || 'gemini_multimodal');
+        setExtractionNotice(json.notice || null);
         setExtractedSummary(json.data.summary || 'Extracted medical document content.');
         if (json.data.encounterDate) {
           setDocDate(json.data.encounterDate);
@@ -276,7 +292,7 @@ export const AddRecordModal: React.FC = () => {
             strength: rx.strength || '',
             dosage: rx.dosage || '',
             frequency: rx.frequency || '',
-            route: rx.route || '',
+            route: rx.route || 'Oral',
             duration: rx.duration || '',
             prescribingClinician: rx.prescribingClinician || '',
             prescriptionDate: rx.prescriptionDate || docDate,
@@ -287,7 +303,7 @@ export const AddRecordModal: React.FC = () => {
         } else if (docType === 'prescription') {
           // Initialize empty editable prescription fields
           setPrescriptionFields({
-            medicationName: docTitle.replace(/prescription/i, '').trim() || 'Prescribed Medication',
+            medicationName: docTitle.replace(/prescription/i, '').trim() || (selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') : ''),
             strength: '',
             dosage: '',
             frequency: '',
@@ -310,8 +326,8 @@ export const AddRecordModal: React.FC = () => {
           referenceLow: obs.referenceLow,
           referenceHigh: obs.referenceHigh,
           status: obs.status || 'recorded',
-          confidence: obs.confidence || 0.95,
-          requiresConfirmation: obs.requiresConfirmation ?? false,
+          confidence: obs.confidence || (json.extractionSource === 'deterministic_text_parser' ? 0.85 : 0.95),
+          requiresConfirmation: obs.requiresConfirmation ?? (json.extractionSource !== 'gemini_multimodal'),
           sourceSnippet: obs.sourceSnippet || '',
         }));
 
@@ -320,12 +336,41 @@ export const AddRecordModal: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Extraction failed:', err);
-      setFileError(err.message || 'Processing failed. Please check the document format and try again.');
+      setFileError(err.message || 'Processing failed. Please check the document format or proceed with manual entry.');
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
       setProcessingStatus('');
     }
+  };
+
+  const handleManualEntryFallback = () => {
+    setFileError(null);
+    setExtractionSource('manual_entry_required');
+    setExtractionNotice(
+      'Manual entry mode: Your uploaded document has been attached. Enter the prescription details or observations below to save the record.'
+    );
+    setExtractedSummary(
+      selectedFile ? `Attached file: ${selectedFile.name}` : (docTitle || 'Medical Document')
+    );
+
+    if (docType === 'prescription') {
+      setPrescriptionFields({
+        medicationName: docTitle || (selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') : ''),
+        strength: '',
+        dosage: '',
+        frequency: '',
+        route: 'Oral',
+        duration: '',
+        prescribingClinician: docSource || '',
+        prescriptionDate: docDate,
+        refills: '',
+        instructions: docText || '',
+        isTakenConfirmed: false,
+      });
+    }
+    setExtractedFacts([]);
+    setStep('review');
   };
 
   const handleConfirmAndSave = async () => {
@@ -493,11 +538,23 @@ export const AddRecordModal: React.FC = () => {
                 )}
               </div>
 
-              {/* Actionable Error Banner */}
+              {/* Actionable Error Banner with Direct Manual Fallback */}
               {fileError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
-                  <div className="leading-relaxed">{fileError}</div>
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-2">
+                  <div className="flex items-start space-x-2">
+                    <AlertCircle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
+                    <div className="leading-relaxed flex-1">{fileError}</div>
+                  </div>
+                  <div className="pt-2 border-t border-rose-200/60 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-[11px] text-rose-700">You can still attach this document and enter details:</span>
+                    <button
+                      type="button"
+                      onClick={handleManualEntryFallback}
+                      className="px-3 py-1 bg-white hover:bg-rose-100 text-rose-900 border border-rose-300 rounded-lg font-semibold text-xs transition-colors cursor-pointer"
+                    >
+                      Continue with Manual Entry
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -584,16 +641,42 @@ export const AddRecordModal: React.FC = () => {
           ) : (
             /* STEP 2: Review & Confirm Extracted Facts (FR-02) */
             <div className="space-y-6">
-              {/* Extraction Success Notice */}
-              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
-                <div className="flex items-center space-x-1.5 text-emerald-900 font-semibold text-xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                  <span>
-                    Extraction Complete — {docType === 'prescription' ? 'Prescription Fields Detected' : `${extractedFacts.length} Candidate Facts Identified`}
-                  </span>
+              {/* Extraction Status Notice with Clinical Honesty */}
+              {extractionSource === 'gemini_multimodal' ? (
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
+                  <div className="flex items-center space-x-1.5 text-emerald-900 font-semibold text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                    <span>
+                      Multimodal Extraction Complete — {docType === 'prescription' ? 'Prescription Fields Detected' : `${extractedFacts.length} Candidate Facts Identified`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-950 leading-relaxed">{extractedSummary}</p>
                 </div>
-                <p className="text-xs text-emerald-950 leading-relaxed">{extractedSummary}</p>
-              </div>
+              ) : extractionSource === 'deterministic_text_parser' ? (
+                <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
+                  <div className="flex items-center space-x-1.5 text-amber-900 font-semibold text-xs">
+                    <Sparkles className="w-4 h-4 text-amber-700" />
+                    <span>
+                      Text Pattern Analysis Complete — Review Required
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-950 leading-relaxed">
+                    {extractionNotice || extractedSummary}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 bg-[#FAF7F0] border border-[#E7E2D8] rounded-xl space-y-1">
+                  <div className="flex items-center space-x-1.5 text-[#1C1E21] font-semibold text-xs">
+                    <FileCheck className="w-4 h-4 text-[#1E3A2F]" />
+                    <span>
+                      Manual Entry Mode — Original Document Preserved
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#656054] leading-relaxed">
+                    {extractionNotice || 'AI vision extraction is unavailable in offline mode. Please enter the prescription details or clinical observations below.'}
+                  </p>
+                </div>
+              )}
 
               {/* Attached file summary badge if present */}
               {selectedFile && (
