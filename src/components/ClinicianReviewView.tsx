@@ -106,7 +106,7 @@ ${selectedPattern.limitations}`;
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 space-y-6">
       {/* Clinician Top Banner */}
       <div className="bg-[#1E3A2F] text-white rounded-xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-2xs">
         <div className="flex items-center space-x-3.5">
@@ -128,7 +128,7 @@ ${selectedPattern.limitations}`;
           </div>
         </div>
 
-        <div className="flex items-center space-x-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <Button
             variant="outline"
             size="sm"

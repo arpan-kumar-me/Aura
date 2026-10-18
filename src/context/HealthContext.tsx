@@ -11,14 +11,9 @@ import {
   AttachedFile,
   RecordType,
 } from '../types';
-import {
-  INITIAL_PATIENT,
-  INITIAL_RECORDS,
-  INITIAL_OBSERVATIONS,
-  INITIAL_PATTERNS,
-  INITIAL_PROVIDERS,
-} from '../data/seedData';
+import { INITIAL_PATIENT } from '../data/seedData';
 import { runLongitudinalAnalysis } from '../services/patternEngine';
+import { localStorageService } from '../services/localStorageService';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
   GoogleAuthProvider,
@@ -36,6 +31,7 @@ import {
 } from 'firebase/firestore';
 
 export type PatientMode = 'demo' | 'new_patient' | 'authenticated';
+export type StorageMode = 'local' | 'cloud';
 
 export interface PatientProfileData {
   uid: string;
@@ -50,10 +46,10 @@ export interface PatientProfileData {
 
 const NEW_PATIENT_INITIAL_PROFILE: PatientProfileData = {
   uid: 'patient_new_onboarding',
-  displayName: 'New Patient',
-  gender: 'Not specified',
+  displayName: 'Sandbox Patient',
+  gender: 'Self-reported',
   age: '—',
-  mrn: 'NEW-0001',
+  mrn: 'SANDBOX-0001',
   primaryPhysician: 'Unassigned',
   primaryConditions: [],
   allergies: [],
@@ -64,7 +60,10 @@ interface HealthContextType {
   authLoading: boolean;
   patientMode: PatientMode;
   setPatientMode: (mode: PatientMode) => void;
+  storageMode: StorageMode;
+  setStorageMode: (mode: StorageMode) => void;
   resetNewPatientState: () => void;
+  resetDemoData: () => void;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   patient: PatientProfileData;
@@ -101,38 +100,40 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [patientMode, setPatientModeState] = useState<PatientMode>('demo');
+  const [storageMode, setStorageModeState] = useState<StorageMode>(() => localStorageService.getStorageMode());
   const [initialRecordType, setInitialRecordType] = useState<RecordType>('prescription');
 
-  // Eleanor Vance demo dataset (preserved)
-  const [demoRecords, setDemoRecords] = useState<HealthRecord[]>(INITIAL_RECORDS);
-  const [demoObservations, setDemoObservations] = useState<Observation[]>(INITIAL_OBSERVATIONS);
-  const [demoPatterns, setDemoPatterns] = useState<PatternCandidate[]>(INITIAL_PATTERNS);
-  const [demoProviders, setDemoProviders] = useState<ConnectedProvider[]>(INITIAL_PROVIDERS);
-  const [demoReviews, setDemoReviews] = useState<Record<string, ClinicianReview>>({});
+  // Eleanor Vance demo dataset (backed by localStorage with fallback to INITIAL_* seed data)
+  const [demoRecords, setDemoRecords] = useState<HealthRecord[]>(() => localStorageService.getDemoRecords());
+  const [demoObservations, setDemoObservations] = useState<Observation[]>(() => localStorageService.getDemoObservations());
+  const [demoPatterns, setDemoPatterns] = useState<PatternCandidate[]>(() => localStorageService.getDemoPatterns());
+  const [demoProviders, setDemoProviders] = useState<ConnectedProvider[]>(() => localStorageService.getDemoProviders());
+  const [demoReviews, setDemoReviews] = useState<Record<string, ClinicianReview>>(() => localStorageService.getDemoReviews());
 
-  // Isolated New Patient dataset (intentional empty state for first-time onboarding)
-  const [newPatientRecords, setNewPatientRecords] = useState<HealthRecord[]>([]);
-  const [newPatientObservations, setNewPatientObservations] = useState<Observation[]>([]);
-  const [newPatientPatterns, setNewPatientPatterns] = useState<PatternCandidate[]>([]);
-  const [newPatientProviders, setNewPatientProviders] = useState<ConnectedProvider[]>(
-    INITIAL_PROVIDERS.map((p) => ({ ...p, status: 'disconnected', lastSync: 'Not connected' }))
-  );
-  const [newPatientReviews, setNewPatientReviews] = useState<Record<string, ClinicianReview>>({});
+  // Isolated Sandbox / New Patient dataset (clean slate backed by localStorage)
+  const [newPatientRecords, setNewPatientRecords] = useState<HealthRecord[]>(() => localStorageService.getSandboxRecords());
+  const [newPatientObservations, setNewPatientObservations] = useState<Observation[]>(() => localStorageService.getSandboxObservations());
+  const [newPatientPatterns, setNewPatientPatterns] = useState<PatternCandidate[]>(() => localStorageService.getSandboxPatterns());
+  const [newPatientProviders, setNewPatientProviders] = useState<ConnectedProvider[]>(() => localStorageService.getSandboxProviders());
+  const [newPatientReviews, setNewPatientReviews] = useState<Record<string, ClinicianReview>>(() => localStorageService.getSandboxReviews());
 
-  // Authenticated user dataset (isolated in Firestore users/{uid})
+  // Authenticated user dataset (isolated)
   const [authRecords, setAuthRecords] = useState<HealthRecord[]>([]);
   const [authObservations, setAuthObservations] = useState<Observation[]>([]);
   const [authPatterns, setAuthPatterns] = useState<PatternCandidate[]>([]);
-  const [authProviders, setAuthProviders] = useState<ConnectedProvider[]>(
-    INITIAL_PROVIDERS.map((p) => ({ ...p, status: 'disconnected', lastSync: 'Not connected' }))
-  );
+  const [authProviders, setAuthProviders] = useState<ConnectedProvider[]>(() => localStorageService.getSandboxProviders());
   const [authReviews, setAuthReviews] = useState<Record<string, ClinicianReview>>({});
 
   const [selectedPattern, setSelectedPattern] = useState<PatternCandidate | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<HealthRecord | null>(null);
   const [isAddRecordModalOpen, setIsAddRecordModalOpen] = useState(false);
 
-  // Monitor Firebase Auth State
+  const setStorageMode = (mode: StorageMode) => {
+    setStorageModeState(mode);
+    localStorageService.setStorageMode(mode);
+  };
+
+  // Monitor Firebase Auth State (Defensive, non-blocking)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
@@ -140,63 +141,64 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (user) {
         setPatientModeState('authenticated');
-        // Fetch strictly from this authenticated user's isolated Firestore partition
-        try {
-          const recsPath = `users/${user.uid}/records`;
-          const recSnap = await getDocs(query(collection(db, recsPath)));
-          const loadedRecs: HealthRecord[] = [];
-          if (!recSnap.empty) {
-            recSnap.forEach((d) => loadedRecs.push(d.data() as HealthRecord));
-            setAuthRecords(loadedRecs);
-          } else {
-            // New registered patient with zero records: intentionally empty
+        // Only attempt remote Firestore read if user or app explicitly activates cloud mode
+        if (storageMode === 'cloud') {
+          try {
+            const recsPath = `users/${user.uid}/records`;
+            const recSnap = await getDocs(query(collection(db, recsPath)));
+            const loadedRecs: HealthRecord[] = [];
+            if (!recSnap.empty) {
+              recSnap.forEach((d) => loadedRecs.push(d.data() as HealthRecord));
+              setAuthRecords(loadedRecs);
+            } else {
+              setAuthRecords([]);
+            }
+
+            const obsPath = `users/${user.uid}/observations`;
+            const obsSnap = await getDocs(query(collection(db, obsPath)));
+            const loadedObs: Observation[] = [];
+            if (!obsSnap.empty) {
+              obsSnap.forEach((d) => loadedObs.push(d.data() as Observation));
+              setAuthObservations(loadedObs);
+            } else {
+              setAuthObservations([]);
+            }
+
+            const revPath = `users/${user.uid}/reviews`;
+            const revSnap = await getDocs(query(collection(db, revPath)));
+            const loadedRevs: Record<string, ClinicianReview> = {};
+            if (!revSnap.empty) {
+              revSnap.forEach((d) => {
+                const r = d.data() as ClinicianReview;
+                loadedRevs[r.patternId] = r;
+              });
+              setAuthReviews(loadedRevs);
+            } else {
+              setAuthReviews({});
+            }
+
+            if (loadedRecs.length >= 2) {
+              const calculatedPatterns = runLongitudinalAnalysis(loadedRecs, loadedObs, user.uid);
+              setAuthPatterns(calculatedPatterns);
+            } else {
+              setAuthPatterns([]);
+            }
+          } catch (err) {
+            console.warn('[AURA HealthContext] Cloud Firestore read deferred or unavailable; falling back to local session:', err);
+            // Fall back to local session so user experience is not disrupted
             setAuthRecords([]);
-          }
-
-          const obsPath = `users/${user.uid}/observations`;
-          const obsSnap = await getDocs(query(collection(db, obsPath)));
-          const loadedObs: Observation[] = [];
-          if (!obsSnap.empty) {
-            obsSnap.forEach((d) => loadedObs.push(d.data() as Observation));
-            setAuthObservations(loadedObs);
-          } else {
             setAuthObservations([]);
-          }
-
-          const revPath = `users/${user.uid}/reviews`;
-          const revSnap = await getDocs(query(collection(db, revPath)));
-          const loadedRevs: Record<string, ClinicianReview> = {};
-          if (!revSnap.empty) {
-            revSnap.forEach((d) => {
-              const r = d.data() as ClinicianReview;
-              loadedRevs[r.patternId] = r;
-            });
-            setAuthReviews(loadedRevs);
-          } else {
-            setAuthReviews({});
-          }
-
-          // Evaluate patterns only if evidence supports it
-          if (loadedRecs.length >= 2) {
-            const calculatedPatterns = runLongitudinalAnalysis(loadedRecs, loadedObs, user.uid);
-            setAuthPatterns(calculatedPatterns);
-          } else {
             setAuthPatterns([]);
           }
-        } catch (err) {
-          console.error('Firestore user isolation fetch error:', err);
-          setAuthRecords([]);
-          setAuthObservations([]);
-          setAuthPatterns([]);
         }
       } else {
-        // If logged out and previously in authenticated mode, return to demo
+        // If logged out, return gracefully to demo mode
         setPatientModeState((prev) => (prev === 'authenticated' ? 'demo' : prev));
       }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [storageMode]);
 
   const openAddRecordModal = (initialType?: RecordType) => {
     if (initialType) {
@@ -212,19 +214,29 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const resetNewPatientState = () => {
+    localStorageService.resetSandboxData();
     setNewPatientRecords([]);
     setNewPatientObservations([]);
     setNewPatientPatterns([]);
-    setNewPatientProviders(
-      INITIAL_PROVIDERS.map((p) => ({ ...p, status: 'disconnected', lastSync: 'Not connected' }))
-    );
+    setNewPatientProviders(localStorageService.getSandboxProviders());
     setNewPatientReviews({});
     setSelectedPattern(null);
     setSelectedRecord(null);
   };
 
+  const resetDemoData = () => {
+    const fresh = localStorageService.resetDemoData();
+    setDemoRecords(fresh.records);
+    setDemoObservations(fresh.observations);
+    setDemoPatterns(fresh.patterns);
+    setDemoProviders(fresh.providers);
+    setDemoReviews(fresh.reviews);
+    setSelectedPattern(null);
+    setSelectedRecord(null);
+  };
+
   // Determine active patient data based on mode
-  const effectiveMode: PatientMode = currentUser ? 'authenticated' : patientMode;
+  const effectiveMode: PatientMode = currentUser && storageMode === 'cloud' ? 'authenticated' : patientMode;
 
   const patient: PatientProfileData = (() => {
     if (effectiveMode === 'authenticated' && currentUser) {
@@ -280,7 +292,7 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error('Sign-in error:', error);
+      console.warn('[AURA Auth] Google sign-in cancelled or interrupted:', error);
     }
   };
 
@@ -290,14 +302,17 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCurrentUser(null);
       setPatientModeState('demo');
     } catch (error) {
-      console.error('Sign-out error:', error);
+      console.warn('[AURA Auth] Sign-out error:', error);
     }
   };
 
   const runAnalysis = () => {
     if (records.length < 2) {
       if (effectiveMode === 'authenticated') setAuthPatterns([]);
-      else if (effectiveMode === 'new_patient') setNewPatientPatterns([]);
+      else if (effectiveMode === 'new_patient') {
+        setNewPatientPatterns([]);
+        localStorageService.saveSandboxPatterns([]);
+      }
       return;
     }
     const generated = runLongitudinalAnalysis(records, observations, patient.uid);
@@ -305,8 +320,10 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setAuthPatterns(generated);
     } else if (effectiveMode === 'new_patient') {
       setNewPatientPatterns(generated);
+      localStorageService.saveSandboxPatterns(generated);
     } else {
       setDemoPatterns(generated);
+      localStorageService.saveDemoPatterns(generated);
     }
   };
 
@@ -372,10 +389,16 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updatedRecords = [fullRecord, ...records];
     const updatedObservations = [...observations, ...newObservations];
 
-    if (effectiveMode === 'authenticated' && currentUser) {
+    // Re-evaluate patterns when longitudinal criteria are satisfied (at least 2 records)
+    let newPatterns: PatternCandidate[] = [];
+    if (updatedRecords.length >= 2) {
+      newPatterns = runLongitudinalAnalysis(updatedRecords, updatedObservations, patient.uid);
+    }
+
+    if (effectiveMode === 'authenticated' && currentUser && storageMode === 'cloud') {
       setAuthRecords(updatedRecords);
       setAuthObservations(updatedObservations);
-      // Persist to Firestore under isolated user scope
+      setAuthPatterns(newPatterns);
       try {
         const recPath = `users/${currentUser.uid}/records`;
         await setDoc(doc(db, recPath, id), fullRecord);
@@ -385,26 +408,22 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           await setDoc(doc(db, obsPath, obs.id), obs);
         }
       } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}/records/${id}`);
+        console.warn('[AURA Firestore] Cloud write fallback:', err);
       }
     } else if (effectiveMode === 'new_patient') {
       setNewPatientRecords(updatedRecords);
       setNewPatientObservations(updatedObservations);
+      setNewPatientPatterns(newPatterns);
+      localStorageService.saveSandboxRecords(updatedRecords);
+      localStorageService.saveSandboxObservations(updatedObservations);
+      localStorageService.saveSandboxPatterns(newPatterns);
     } else {
       setDemoRecords(updatedRecords);
       setDemoObservations(updatedObservations);
-    }
-
-    // Re-evaluate patterns only when longitudinal criteria are satisfied (at least 2 records)
-    if (updatedRecords.length >= 2) {
-      const newPatterns = runLongitudinalAnalysis(updatedRecords, updatedObservations, patient.uid);
-      if (effectiveMode === 'authenticated') setAuthPatterns(newPatterns);
-      else if (effectiveMode === 'new_patient') setNewPatientPatterns(newPatterns);
-      else setDemoPatterns(newPatterns);
-    } else {
-      // 1 record: intentional single-record state, no fabricated patterns
-      if (effectiveMode === 'authenticated') setAuthPatterns([]);
-      else if (effectiveMode === 'new_patient') setNewPatientPatterns([]);
+      setDemoPatterns(newPatterns);
+      localStorageService.saveDemoRecords(updatedRecords);
+      localStorageService.saveDemoObservations(updatedObservations);
+      localStorageService.saveDemoPatterns(newPatterns);
     }
   };
 
@@ -429,9 +448,21 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { ...rec, extractedFacts: updatedFacts };
       });
 
-    if (effectiveMode === 'authenticated') setAuthRecords(updateList);
-    else if (effectiveMode === 'new_patient') setNewPatientRecords(updateList);
-    else setDemoRecords(updateList);
+    if (effectiveMode === 'authenticated' && storageMode === 'cloud') {
+      setAuthRecords(updateList);
+    } else if (effectiveMode === 'new_patient') {
+      setNewPatientRecords((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveSandboxRecords(updated);
+        return updated;
+      });
+    } else {
+      setDemoRecords((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveDemoRecords(updated);
+        return updated;
+      });
+    }
   };
 
   const updatePrescriptionIntakeConfirmation = async (recordId: string, confirmed: boolean) => {
@@ -449,26 +480,32 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       });
 
-    if (effectiveMode === 'authenticated') {
+    if (effectiveMode === 'authenticated' && currentUser && storageMode === 'cloud') {
       setAuthRecords(updateList);
-      if (currentUser) {
-        const target = authRecords.find((r) => r.id === recordId);
-        if (target && target.prescriptionDetails) {
-          const updated = {
-            ...target,
-            prescriptionDetails: { ...target.prescriptionDetails, isTakenConfirmed: confirmed },
-          };
-          try {
-            await setDoc(doc(db, `users/${currentUser.uid}/records`, recordId), updated);
-          } catch (err) {
-            console.error('Failed to update prescription intake confirmation in Firestore:', err);
-          }
+      const target = authRecords.find((r) => r.id === recordId);
+      if (target && target.prescriptionDetails) {
+        const updated = {
+          ...target,
+          prescriptionDetails: { ...target.prescriptionDetails, isTakenConfirmed: confirmed },
+        };
+        try {
+          await setDoc(doc(db, `users/${currentUser.uid}/records`, recordId), updated);
+        } catch (err) {
+          console.warn('[AURA Firestore] Failed to update prescription confirmation in cloud:', err);
         }
       }
     } else if (effectiveMode === 'new_patient') {
-      setNewPatientRecords(updateList);
+      setNewPatientRecords((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveSandboxRecords(updated);
+        return updated;
+      });
     } else {
-      setDemoRecords(updateList);
+      setDemoRecords((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveDemoRecords(updated);
+        return updated;
+      });
     }
   };
 
@@ -485,9 +522,21 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       });
 
-    if (effectiveMode === 'authenticated') setAuthRecords(updateList);
-    else if (effectiveMode === 'new_patient') setNewPatientRecords(updateList);
-    else setDemoRecords(updateList);
+    if (effectiveMode === 'authenticated' && storageMode === 'cloud') {
+      setAuthRecords(updateList);
+    } else if (effectiveMode === 'new_patient') {
+      setNewPatientRecords((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveSandboxRecords(updated);
+        return updated;
+      });
+    } else {
+      setDemoRecords((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveDemoRecords(updated);
+        return updated;
+      });
+    }
   };
 
   const saveClinicianReview = async (patternId: string, status: ReviewStatus, notes: string) => {
@@ -502,20 +551,26 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       reviewedAt: new Date().toISOString(),
     };
 
-    if (effectiveMode === 'authenticated') {
+    if (effectiveMode === 'authenticated' && currentUser && storageMode === 'cloud') {
       setAuthReviews((prev) => ({ ...prev, [patternId]: review }));
-      if (currentUser) {
-        try {
-          const path = `users/${currentUser.uid}/reviews`;
-          await setDoc(doc(db, path, review.id), review);
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}/reviews/${review.id}`);
-        }
+      try {
+        const path = `users/${currentUser.uid}/reviews`;
+        await setDoc(doc(db, path, review.id), review);
+      } catch (err) {
+        console.warn('[AURA Firestore] Cloud review save fallback:', err);
       }
     } else if (effectiveMode === 'new_patient') {
-      setNewPatientReviews((prev) => ({ ...prev, [patternId]: review }));
+      setNewPatientReviews((prev) => {
+        const updated = { ...prev, [patternId]: review };
+        localStorageService.saveSandboxReviews(updated);
+        return updated;
+      });
     } else {
-      setDemoReviews((prev) => ({ ...prev, [patternId]: review }));
+      setDemoReviews((prev) => {
+        const updated = { ...prev, [patternId]: review };
+        localStorageService.saveDemoReviews(updated);
+        return updated;
+      });
     }
   };
 
@@ -531,9 +586,21 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       });
 
-    if (effectiveMode === 'authenticated') setAuthProviders(updateList);
-    else if (effectiveMode === 'new_patient') setNewPatientProviders(updateList);
-    else setDemoProviders(updateList);
+    if (effectiveMode === 'authenticated' && storageMode === 'cloud') {
+      setAuthProviders(updateList);
+    } else if (effectiveMode === 'new_patient') {
+      setNewPatientProviders((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveSandboxProviders(updated);
+        return updated;
+      });
+    } else {
+      setDemoProviders((prev) => {
+        const updated = updateList(prev);
+        localStorageService.saveDemoProviders(updated);
+        return updated;
+      });
+    }
   };
 
   return (
@@ -543,7 +610,10 @@ export const HealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         authLoading,
         patientMode: effectiveMode,
         setPatientMode,
+        storageMode,
+        setStorageMode,
         resetNewPatientState,
+        resetDemoData,
         signInWithGoogle,
         signOut,
         patient,

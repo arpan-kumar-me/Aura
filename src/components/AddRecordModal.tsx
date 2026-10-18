@@ -358,12 +358,12 @@ export const AddRecordModal: React.FC = () => {
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col border border-[#E7E2D8] shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="px-6 py-5 bg-[#FAF7F0] border-b border-[#E7E2D8] flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 bg-[#FAF7F0] border-b border-[#E7E2D8] flex items-center justify-between">
           <div>
             <div className="flex items-center space-x-2 text-xs text-[#7A7467]">
               <span>{step === 'input' ? 'Step 1: Document Entry & Upload' : 'Step 2: Fact & Prescription Review'}</span>
             </div>
-            <h2 className="font-editorial text-2xl font-semibold text-[#1C1E21] mt-0.5">
+            <h2 className="font-editorial text-xl sm:text-2xl font-semibold text-[#1C1E21] mt-0.5">
               {step === 'input' ? 'Add Medical Record or Prescription' : 'Review Extracted Medical Information'}
             </h2>
           </div>
@@ -377,7 +377,7 @@ export const AddRecordModal: React.FC = () => {
         </div>
 
         {/* Modal Content */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-sm">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-sm">
           {step === 'input' ? (
             <div className="space-y-5">
               {/* Record Type Selection */}

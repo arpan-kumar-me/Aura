@@ -68,7 +68,7 @@ export const RecordDetailDrawer: React.FC = () => {
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end">
         <div className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col border-l border-[#E7E2D8] overflow-hidden">
           {/* Drawer Header */}
-          <div className="p-6 bg-[#FAF7F0] border-b border-[#E7E2D8] flex items-start justify-between">
+          <div className="p-4 sm:p-6 bg-[#FAF7F0] border-b border-[#E7E2D8] flex items-start justify-between">
             <div className="space-y-1.5 pr-4">
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge recordType={selectedRecord.recordType}>
@@ -93,7 +93,7 @@ export const RecordDetailDrawer: React.FC = () => {
           </div>
 
           {/* Drawer Body */}
-          <div className="p-6 overflow-y-auto space-y-6 flex-1 text-sm">
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-sm">
             {/* Clinical Encounter Summary */}
             <div className="bg-[#FAF7F0] p-4 rounded-xl border border-[#E7E2D8]">
               <span className="text-xs font-semibold text-[#7A7467] block mb-1">

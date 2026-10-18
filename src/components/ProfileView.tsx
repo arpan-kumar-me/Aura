@@ -11,6 +11,9 @@ import {
   Activity,
   Copy,
   Check,
+  HardDrive,
+  RotateCcw,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
@@ -23,7 +26,13 @@ export const ProfileView: React.FC = () => {
     observations,
     patterns,
     signInWithGoogle,
+    patientMode,
+    setPatientMode,
+    resetDemoData,
+    resetNewPatientState,
   } = useHealth();
+
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
 
   const [copiedShareLink, setCopiedShareLink] = useState(false);
   const [clinicianToken] = useState('aura_share_ev7204_exp2026');
@@ -55,7 +64,7 @@ export const ProfileView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 space-y-8">
       {/* Standardized Header */}
       <PageHeader
         title="Profile & Connected Sources"
@@ -223,6 +232,129 @@ export const ProfileView: React.FC = () => {
           >
             {copiedShareLink ? 'Link Copied' : 'Copy Review Link'}
           </Button>
+        </div>
+      </Card>
+
+      {/* No-Billing Local Storage & Dataset Controls */}
+      <Card variant="default" className="space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-[#E7E2D8] pb-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-800">
+              <HardDrive className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-editorial text-xl font-semibold text-[#1C1E21] flex items-center space-x-2">
+                <span>No-Billing Demo Mode</span>
+                <span className="text-[11px] font-sans font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  Active
+                </span>
+              </h2>
+              <p className="text-xs text-[#7A7467]">
+                Running completely client-side in browser localStorage. No cloud billing or payment setup required.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {resetNotice && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center justify-between">
+            <span className="flex items-center space-x-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-700" />
+              <span>{resetNotice}</span>
+            </span>
+            <button
+              onClick={() => setResetNotice(null)}
+              className="text-emerald-700 hover:text-emerald-900 text-xs font-semibold cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          {/* Demo Patient Dataset */}
+          <div className={`p-4 rounded-xl border transition-all ${
+            patientMode === 'demo'
+              ? 'bg-[#FAF7F0] border-[#1E3A2F]/40 ring-1 ring-[#1E3A2F]/20'
+              : 'bg-[#FDFBF7] border-[#E7E2D8]'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-sm text-[#1C1E21]">Eleanor Vance (Curated Demo)</span>
+              {patientMode === 'demo' && (
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#1E3A2F] bg-[#E3DFCE] px-2 py-0.5 rounded">
+                  Current View
+                </span>
+              )}
+            </div>
+            <p className="text-[#656054] mb-3 leading-relaxed">
+              Complete longitudinal statin myalgia trajectory (2025–2026), lab deviations, and Apple Health wearable telemetry.
+            </p>
+            <div className="flex items-center space-x-2">
+              {patientMode !== 'demo' && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPatientMode('demo')}
+                >
+                  Switch to Demo
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<RotateCcw className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  resetDemoData();
+                  setResetNotice('Eleanor Vance demo timeline has been restored to factory baseline.');
+                  setTimeout(() => setResetNotice(null), 4000);
+                }}
+              >
+                Reset Demo Data
+              </Button>
+            </div>
+          </div>
+
+          {/* Sandbox Dataset */}
+          <div className={`p-4 rounded-xl border transition-all ${
+            patientMode === 'new_patient'
+              ? 'bg-[#FAF7F0] border-[#1E3A2F]/40 ring-1 ring-[#1E3A2F]/20'
+              : 'bg-[#FDFBF7] border-[#E7E2D8]'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-sm text-[#1C1E21]">Sandbox Patient (Custom Uploads)</span>
+              {patientMode === 'new_patient' && (
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#1E3A2F] bg-[#E3DFCE] px-2 py-0.5 rounded">
+                  Current View
+                </span>
+              )}
+            </div>
+            <p className="text-[#656054] mb-3 leading-relaxed">
+              Isolated testing environment. Upload custom prescription PDFs or lab reports; persists across browser sessions in local storage.
+            </p>
+            <div className="flex items-center space-x-2">
+              {patientMode !== 'new_patient' && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPatientMode('new_patient')}
+                >
+                  Switch to Sandbox
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<RotateCcw className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  resetNewPatientState();
+                  setResetNotice('Sandbox patient data has been cleared.');
+                  setTimeout(() => setResetNotice(null), 4000);
+                }}
+              >
+                Clear Sandbox
+              </Button>
+            </div>
+          </div>
         </div>
       </Card>
 

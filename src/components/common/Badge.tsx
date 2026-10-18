@@ -47,7 +47,7 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${styleClasses} ${className}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border whitespace-nowrap shrink-0 ${styleClasses} ${className}`}
     >
       {icon}
       <span>{children}</span>

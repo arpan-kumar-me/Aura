@@ -230,72 +230,76 @@ For lab reports or clinical notes, also extract numerical observations (CPK, AST
 
       parts.push({ text: promptText });
 
-      const response = await aiClient.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: parts.length === 1 ? parts[0].text : { parts },
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              documentType: {
-                type: Type.STRING,
-                description: "One of 'prescription', 'lab_report', 'clinical_note', 'other_document', 'medication', 'symptom'",
-              },
-              encounterDate: {
-                type: Type.STRING,
-                description: "Estimated or explicit date in YYYY-MM-DD format",
-              },
-              summary: {
-                type: Type.STRING,
-                description: "Short, objective clinical summary of the document",
-              },
-              prescriptionDetails: {
-                type: Type.OBJECT,
-                properties: {
-                  medicationName: { type: Type.STRING },
-                  strength: { type: Type.STRING },
-                  dosage: { type: Type.STRING },
-                  frequency: { type: Type.STRING },
-                  route: { type: Type.STRING },
-                  duration: { type: Type.STRING },
-                  prescribingClinician: { type: Type.STRING },
-                  prescriptionDate: { type: Type.STRING },
-                  refills: { type: Type.STRING },
-                  instructions: { type: Type.STRING },
+      try {
+        const response = await aiClient.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: parts.length === 1 ? parts[0].text : { parts },
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                documentType: {
+                  type: Type.STRING,
+                  description: "One of 'prescription', 'lab_report', 'clinical_note', 'other_document', 'medication', 'symptom'",
                 },
-                required: ["medicationName"],
-              },
-              extractedObservations: {
-                type: Type.ARRAY,
-                items: {
+                encounterDate: {
+                  type: Type.STRING,
+                  description: "Estimated or explicit date in YYYY-MM-DD format",
+                },
+                summary: {
+                  type: Type.STRING,
+                  description: "Short, objective clinical summary of the document",
+                },
+                prescriptionDetails: {
                   type: Type.OBJECT,
                   properties: {
-                    metricKey: { type: Type.STRING },
-                    metricLabel: { type: Type.STRING },
-                    numericValue: { type: Type.NUMBER },
-                    unit: { type: Type.STRING },
-                    referenceLow: { type: Type.NUMBER },
-                    referenceHigh: { type: Type.NUMBER },
-                    status: { type: Type.STRING, description: "normal, elevated, low, or recorded" },
-                    confidence: { type: Type.NUMBER },
-                    requiresConfirmation: { type: Type.BOOLEAN },
-                    sourceSnippet: { type: Type.STRING },
+                    medicationName: { type: Type.STRING },
+                    strength: { type: Type.STRING },
+                    dosage: { type: Type.STRING },
+                    frequency: { type: Type.STRING },
+                    route: { type: Type.STRING },
+                    duration: { type: Type.STRING },
+                    prescribingClinician: { type: Type.STRING },
+                    prescriptionDate: { type: Type.STRING },
+                    refills: { type: Type.STRING },
+                    instructions: { type: Type.STRING },
                   },
-                  required: ["metricKey", "metricLabel", "confidence", "requiresConfirmation"],
+                  required: ["medicationName"],
+                },
+                extractedObservations: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      metricKey: { type: Type.STRING },
+                      metricLabel: { type: Type.STRING },
+                      numericValue: { type: Type.NUMBER },
+                      unit: { type: Type.STRING },
+                      referenceLow: { type: Type.NUMBER },
+                      referenceHigh: { type: Type.NUMBER },
+                      status: { type: Type.STRING, description: "normal, elevated, low, or recorded" },
+                      confidence: { type: Type.NUMBER },
+                      requiresConfirmation: { type: Type.BOOLEAN },
+                      sourceSnippet: { type: Type.STRING },
+                    },
+                    required: ["metricKey", "metricLabel", "confidence", "requiresConfirmation"],
+                  },
                 },
               },
+              required: ["documentType", "encounterDate", "summary"],
             },
-            required: ["documentType", "encounterDate", "summary"],
           },
-        },
-      });
+        });
 
-      const extractedJson = JSON.parse(response.text || '{}');
-      return res.json({ success: true, data: extractedJson });
+        const extractedJson = JSON.parse(response.text || '{}');
+        return res.json({ success: true, data: extractedJson });
+      } catch (geminiError) {
+        console.warn('[AURA Gemini API] Model inference deferred or quota unavailable. Engaging deterministic clinical parser:', geminiError);
+      }
     }
 
-    // High fidelity deterministic extraction fallback when API key is unconfigured
+    // High fidelity deterministic extraction fallback when API key is unconfigured or quota unavailable
     const contentToParse = documentText || `${documentTitle || ''} ${fileName || ''}`;
     const parsedRx = parsePrescriptionText(contentToParse, documentTitle, dateHint);
 
@@ -342,9 +346,10 @@ apiRouter.post('/explain', async (req: Request, res: Response) => {
     }
 
     if (aiClient) {
-      const response = await aiClient.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: `You are the evidence explanation layer for AURA, a longitudinal health intelligence platform.
+      try {
+        const response = await aiClient.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: `You are the evidence explanation layer for AURA, a longitudinal health intelligence platform.
 Your mandate is to provide calm, precise, evidence-grounded explanation of an observed temporal pattern over time.
 
 STRICT CONSTRAINTS:
@@ -363,41 +368,44 @@ ${JSON.stringify(evidencePoints, null, 2)}
 Patient Profile Context:
 ${JSON.stringify(patientContext || {}, null, 2)}
 `,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              plainExplanation: {
-                type: Type.STRING,
-                description: "Clear, reassuring explanation of what the timeline shows, without medical jargon",
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                plainExplanation: {
+                  type: Type.STRING,
+                  description: "Clear, reassuring explanation of what the timeline shows, without medical jargon",
+                },
+                supportingEvidenceSummary: {
+                  type: Type.STRING,
+                  description: "Brief recap of the exact dates and measurements backing the observation",
+                },
+                unestablishedCaveats: {
+                  type: Type.STRING,
+                  description: "Explicit mention of alternative explanations, missing records, or why this is not causal proof",
+                },
+                questionsForDoctor: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "2-3 targeted, polite questions for discussion with the patient's clinician",
+                },
+                clinicianTalkingPoints: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "Concise clinical points (e.g. onset latency, baseline standard deviations, re-challenge status)",
+                },
               },
-              supportingEvidenceSummary: {
-                type: Type.STRING,
-                description: "Brief recap of the exact dates and measurements backing the observation",
-              },
-              unestablishedCaveats: {
-                type: Type.STRING,
-                description: "Explicit mention of alternative explanations, missing records, or why this is not causal proof",
-              },
-              questionsForDoctor: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "2-3 targeted, polite questions for discussion with the patient's clinician",
-              },
-              clinicianTalkingPoints: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "Concise clinical points (e.g. onset latency, baseline standard deviations, re-challenge status)",
-              },
+              required: ["plainExplanation", "supportingEvidenceSummary", "unestablishedCaveats", "questionsForDoctor", "clinicianTalkingPoints"],
             },
-            required: ["plainExplanation", "supportingEvidenceSummary", "unestablishedCaveats", "questionsForDoctor", "clinicianTalkingPoints"],
           },
-        },
-      });
+        });
 
-      const parsed = JSON.parse(response.text || '{}');
-      return res.json({ success: true, explanation: parsed });
+        const parsed = JSON.parse(response.text || '{}');
+        return res.json({ success: true, explanation: parsed });
+      } catch (geminiError) {
+        console.warn('[AURA Gemini API] Model inference deferred or quota unavailable. Engaging deterministic clinical explanation:', geminiError);
+      }
     }
 
     // High quality deterministic fallback

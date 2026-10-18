@@ -32,7 +32,7 @@ export const EvidenceList: React.FC<EvidenceListProps> = ({
               isClickable ? 'hover:border-[#1E3A2F] cursor-pointer group' : ''
             }`}
           >
-            <div className="flex items-center space-x-3 text-xs overflow-hidden">
+            <div className="flex items-center space-x-3 text-xs overflow-hidden min-w-0 flex-1">
               <span className="font-mono text-[#7A7467] font-semibold shrink-0">
                 {link.date}
               </span>

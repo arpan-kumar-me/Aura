@@ -55,7 +55,7 @@ export const RecordsView: React.FC = () => {
   }, [records, selectedType, selectedSource, searchQuery]);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 space-y-8">
       {/* Standardized Header */}
       <PageHeader
         title="Medical Records"

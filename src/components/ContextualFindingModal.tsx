@@ -85,7 +85,7 @@ export const ContextualFindingModal: React.FC = () => {
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col border border-[#E7E2D8] shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="px-6 py-5 bg-[#FAF7F0] border-b border-[#E7E2D8] flex items-start justify-between">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 bg-[#FAF7F0] border-b border-[#E7E2D8] flex items-start justify-between">
           <div className="space-y-1 pr-6">
             <div className="flex items-center space-x-2 text-xs">
               <span className="text-[#4A463D] font-medium">
@@ -115,7 +115,7 @@ export const ContextualFindingModal: React.FC = () => {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#E7E2D8] px-6 bg-white overflow-x-auto text-xs font-medium">
+        <div className="flex border-b border-[#E7E2D8] px-4 sm:px-6 bg-white overflow-x-auto text-xs font-medium">
           <button
             onClick={() => setActiveTab('evidence')}
             className={`py-3 px-3 border-b-2 transition-all whitespace-nowrap cursor-pointer ${
@@ -163,7 +163,7 @@ export const ContextualFindingModal: React.FC = () => {
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-6 overflow-y-auto space-y-6 text-sm flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 text-sm flex-1">
           {/* Plain language overview card always visible at top */}
           <div className="bg-[#FAF7F0] p-4 rounded-xl border border-[#E7E2D8]">
             <span className="text-xs font-semibold text-[#7A7467] block mb-1">

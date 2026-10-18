@@ -14,7 +14,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   className = '',
 }) => {
   return (
-    <div className={`flex items-baseline justify-between gap-4 mb-3 ${className}`}>
+    <div className={`flex items-start sm:items-baseline justify-between gap-3 sm:gap-4 mb-3.5 ${className}`}>
       <div>
         <h2 className="font-editorial text-xl sm:text-2xl font-semibold text-[#1C1E21] tracking-tight">
           {title}

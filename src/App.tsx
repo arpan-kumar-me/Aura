@@ -31,7 +31,7 @@ function AppContent() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 pb-16">
+      <main className="flex-1 pt-6 sm:pt-8 lg:pt-10 pb-28 lg:pb-20">
         {isClinicianMode ? (
           <ClinicianReviewView />
         ) : (

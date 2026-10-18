@@ -54,14 +54,18 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Test connection on app boot
-export async function testConnection() {
+// Connection health check (guarded for cloud mode)
+export async function testConnection(): Promise<boolean> {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
+      console.warn('[AURA Firebase] Cloud database is offline or unprovisioned. Running in local mode.');
+    } else {
+      console.warn('[AURA Firebase] Cloud connection check:', error);
     }
+    return false;
   }
 }
-testConnection();
+

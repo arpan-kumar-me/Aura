@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan to introduce a robust No-Billing Demo Mode in AURA. It decouples the application from custom Firestore database requirements, enables persistent browser localStorage for demo and sandbox patients with strict namespace isolation, preserves existing Firebase integration safely behind an explicit switch, and ensures Gemini API features remain fully optional with instant deterministic fallbacks.",
+  "updatedAt": "2026-10-17T15:28:10.756017413Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
